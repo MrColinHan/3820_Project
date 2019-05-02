@@ -1,0 +1,170 @@
+%{
+ open Absyn
+ open ParAux
+%}
+
+%token <int> CSTINT
+%token <string> NAME
+%token <bool> CSTBOOL
+
+/*      Nil  Bool  Int   ->     */
+%token  NIL  BOOL  INT  ARROW
+
+/*      =>      fn  end  */
+%token  DARROW  FN  END
+
+/*      var  fun  rec  */
+%token  VAR  FUN  REC
+
+/*      if  then  else  */
+%token  IF  THEN  ELSE
+
+/*      match  with  |     _          */
+%token  MATCH  WITH  PIPE  UNDERSCORE
+
+/*      !    &&   */
+%token  NOT  AND
+
+/*      ::    hd    tl    ise  */
+%token  CONS  HEAD  TAIL  ISE
+
+/*      print  */
+%token  PRINT
+
+/*      +     -      *      /     */
+%token  PLUS  MINUS  TIMES  DIV
+
+/*      =   !=   <   <=   */
+%token  EQ  NEQ  LT  LTE
+
+/*      (     )     {       }       [       ]       */
+%token  LPAR  RPAR  LBRACE  RBRACE  LBRACK  RBRACK
+
+/*      ,      :      ;      */
+%token  COMMA  COLON  SEMIC
+
+%token EOF
+
+
+%right SEMIC ARROW
+%nonassoc IF MATCH
+%left ELSE
+%left AND
+%left EQ NEQ
+%left LT LTE
+%right CONS
+%left PLUS MINUS
+%left TIMES DIV
+%nonassoc NOT HEAD TAIL ISE PRINT NAME
+%left LBRACK
+
+%start Main
+%type <Absyn.expr> Main
+
+%%
+
+/*  Add production rules below */
+
+Prog:
+    Expr PIPE Decl SEMIC Prog
+;
+
+Decl: 
+    VAR NAME EQ Expr
+  | FUN NAME Args EQ Expr
+  | FUN REC NAME Args COLON Type EQ Exp
+;    
+
+Expr:
+    AtExpr                       { $1                    }
+  | AppExpr                      { $1                    }
+  | IF Expr THEN Expr ELSE Expr  { If ($2, $4, $6)       }
+  | MATCH Expr WITH Matchexpr    { Match ($2, $4)        }
+  | NOT   Expr                   { Prim1 ("!", $2)       }
+  | MINUS Expr                   { Prim1 ("-", $2)       }
+  | HEAD Expr                    { Prim1 ("hd", $2)      }
+  | TAIL Expr                    { Prim1 ("tl", $2)      }
+  | ISE Expr                     { Prim1 ("ise", $2)     }
+  | PRINT Expr                   { Prim1 ("print", $2)   }
+  | Expr PLUS  Expr              { Prim2 ("+",  $1, $3)  }
+  | Expr MINUS Expr              { Prim2 ("-",  $1, $3)  }
+  | Expr TIMES Expr              { Prim2 ("*",  $1, $3)  }
+  | Expr DIV   Expr              { Prim2 ("/",  $1, $3)  }
+  | Expr EQ    Expr              { Prim2 ("=",  $1, $3)  }
+  | Expr NE    Expr              { Prim2 ("<>", $1, $3)  }
+  | Expr LT    Expr              { Prim2 ("<",  $1, $3)  }
+  | Expr LTE   Expr              { Prim2 ("<=",  $1, $3) }
+  | Expr CONS  Expr              { Prim2 ("::",  $1, $3) }
+  | Expr SEMIC Expr              { Prim2 (";",  $1, $3)  }
+  | Expr LBRACK CSTINT RBRACK    { Item ($3, $1)         }
+  | Expr AND   Expr              { Prim2 ("&&",  $1, $3) }
+;
+
+AtExpr:
+    Const                   { $1      }
+  | NAME                    { Var $1  }
+  | LBRACE Prog RBRACE      { $2      }
+  | LPAR Expr RPAR          { $2      }
+  | LPAR Comps RPAR         { List $2 }
+  | FN Args DARROW Expr END { $2, $4  }
+;
+
+AppExpr:
+    AtExpr AtExpr   { Call ($1, $2) }
+  | AppExpr AtExpr  { Call ($1, $2) }
+;
+
+Const:
+    CSTBOOL PIPE CSTBOOL {}
+  | CSTINT               {CstI ($1)} 
+  | LPAR RPAR            {List []}
+  | LPAR Type RPAR       {}
+;
+
+Comps:
+    Expr COMMA Expr   { [$1; $3] }
+  | Expr COMMA Comps  { $1 :: $3 }
+;
+
+Matchexpr: 
+    END
+  | PIPE Condexpr ARROW Expr Matchexpr  {}
+
+Condexpr: 
+    Expr        { $1 }
+  | UNDERSCORE  
+;
+
+Args:
+    LPAR RPAR           { []   }
+  | LPAR Params RPAR    { $2   }     
+;
+
+Params:
+    TypedVar                 { $1 :: [] } 
+  | TypedVar COMMA Params    { $1 :: $3 }  
+;
+
+TypedVar:
+  Type NAME  { ($1, $2) }     
+;
+
+Type:
+    AtType              { $1       }
+  | LPAR Types RPAR     { ListT $2 }
+  | LBRACK Type RBRACK  { $s2      }
+  | Type ARROW Type     { $1, $3   }
+;
+
+AtType:
+    NIL             { ListT [] }
+  | BOOL            { BoolT    }
+  | INT             { IntT     }
+  | LPAR Type RPAR  { $2       }
+;
+
+Types: 
+    Type COMMA Type    { [$1; $3] }
+  | Type COMMA Types   { $1 :: $3 }
+;
+
